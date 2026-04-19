@@ -115,7 +115,7 @@ export async function GET(request: Request) {
     });
 
     // Calcular tendência para cada categoria
-    function calcularTendencia(evolucaoMensal: Map<string, number>): 'crescente' | 'decrescente' | 'estavel' {
+    const calcularTendencia = (evolucaoMensal: Map<string, number>): 'crescente' | 'decrescente' | 'estavel' => {
       const valores = Array.from(evolucaoMensal.values());
       if (valores.length < 3) return 'estavel';
 
