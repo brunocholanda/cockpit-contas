@@ -370,7 +370,7 @@ export default function CartoesPage() {
               <CreditCardIcon className="mb-4 h-12 w-12 text-muted-foreground" />
               <h3 className="mb-2 text-lg font-semibold">Nenhuma transação encontrada</h3>
               <p className="text-sm text-muted-foreground">
-                Transações do tipo "Cartão de Crédito" aparecerão aqui.
+                Transações do tipo &quot;Cartão de Crédito&quot; aparecerão aqui.
               </p>
             </CardContent>
           </Card>

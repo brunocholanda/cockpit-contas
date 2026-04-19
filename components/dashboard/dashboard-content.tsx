@@ -362,7 +362,7 @@ export function DashboardContent() {
                           alert.details.transactionDescription &&
                           alert.details.transactionAmount && (
                             <p>
-                              "{alert.details.transactionDescription}" - {formatCurrency(alert.details.transactionAmount)}
+                              &quot;{alert.details.transactionDescription}&quot; - {formatCurrency(alert.details.transactionAmount)}
                               {alert.details.averageAmount && (
                                 <> (média: {formatCurrency(alert.details.averageAmount)})</>
                               )}
