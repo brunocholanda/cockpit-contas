@@ -1,0 +1,441 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================================
+// AUTENTICAÇÃO E USUÁRIOS
+// ============================================================================
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  name          String?
+  role          UserRole @default(USER)
+  isActive      Boolean  @default(true)
+  monthlyIncome Float?   // Renda mensal do usuário
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relações
+  categories          Category[]
+  transactions        Transaction[]
+  creditCards         CreditCard[]
+  budgets             Budget[]
+  financialGoals      FinancialGoal[]
+  projects            Project[]
+  alerts              Alert[]
+  settings            UserSettings?
+  passwordResetTokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ============================================================================
+// CATEGORIAS
+// ============================================================================
+
+enum CategoryType {
+  DESPESA
+  RECEITA
+}
+
+model Category {
+  id          String       @id @default(cuid())
+  userId      String
+  name        String
+  type        CategoryType @default(DESPESA)
+  icon        String       @default("Circle") // Nome do ícone Lucide
+  color       String       @default("#6B7280") // Hex color
+  description String?
+  parentId    String?      // Para subcategorias
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relações
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent          Category?        @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children        Category[]       @relation("CategoryHierarchy")
+  transactions    Transaction[]
+  budgets         Budget[]
+  creditCardItems CreditCardItem[]
+  projectExpenses ProjectExpense[]
+
+  @@index([userId])
+  @@index([parentId])
+  @@index([type])
+  @@map("categories")
+}
+
+// ============================================================================
+// TRANSAÇÕES
+// ============================================================================
+
+enum PaymentMethod {
+  DEBITO
+  CREDITO
+  IMPOSTO
+}
+
+enum TransactionStatus {
+  PAGO
+  PENDENTE
+  VENCIDO
+  CANCELADO
+}
+
+enum TransactionType {
+  NORMAL
+  CARTAO_CREDITO
+}
+
+model Transaction {
+  id                  String            @id @default(cuid())
+  userId              String
+  categoryId          String
+  creditCardId        String?           // Null se não é cartão de crédito
+  type                TransactionType   @default(NORMAL)
+  description         String
+  amount              Float
+  transactionDate     DateTime
+  dueDate             DateTime?
+  paymentMethod       PaymentMethod
+  status              TransactionStatus @default(PENDENTE)
+  installmentNumber   Int               @default(1)  // Número da parcela atual
+  totalInstallments   Int               @default(1)  // Total de parcelas
+  parentTransactionId String?           // ID da transação pai (primeira parcela)
+  notes               String?
+  attachmentUrl       String?           // URL do comprovante no Supabase Storage
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  // Relações
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category          Category        @relation(fields: [categoryId], references: [id])
+  creditCard        CreditCard?     @relation(fields: [creditCardId], references: [id])
+  parentTransaction Transaction?    @relation("InstallmentRelation", fields: [parentTransactionId], references: [id])
+  installments      Transaction[]   @relation("InstallmentRelation")
+  creditCardItem    CreditCardItem?
+  projectExpenses   ProjectExpense[]
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([transactionDate])
+  @@index([status])
+  @@index([type])
+  @@index([creditCardId])
+  @@index([parentTransactionId])
+  @@map("transactions")
+}
+
+// ============================================================================
+// CARTÕES DE CRÉDITO
+// ============================================================================
+
+enum CardBrand {
+  VISA
+  MASTERCARD
+  ELO
+  AMEX
+  HIPERCARD
+  OUTRO
+}
+
+model CreditCard {
+  id             String    @id @default(cuid())
+  userId         String
+  name           String    // Ex: "Nubank Pessoal"
+  brand          CardBrand
+  lastFourDigits String    // Últimos 4 dígitos
+  creditLimit    Float
+  closingDay     Int       // 1-31
+  dueDay         Int       // 1-31
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relações
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoices     CreditCardInvoice[]
+  transactions Transaction[]
+
+  @@index([userId])
+  @@index([isActive])
+  @@map("credit_cards")
+}
+
+enum InvoiceStatus {
+  ABERTA
+  FECHADA
+  PAGA
+  VENCIDA
+}
+
+model CreditCardInvoice {
+  id              String        @id @default(cuid())
+  cardId          String
+  referenceMonth  Int           // 1-12
+  referenceYear   Int
+  totalAmount     Float         @default(0)
+  status          InvoiceStatus @default(ABERTA)
+  closingDate     DateTime
+  dueDate         DateTime
+  paymentDate     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relações
+  card  CreditCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  items CreditCardItem[]
+
+  @@unique([cardId, referenceMonth, referenceYear])
+  @@index([cardId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("credit_card_invoices")
+}
+
+model CreditCardItem {
+  id                 String   @id @default(cuid())
+  invoiceId          String
+  transactionId      String   @unique
+  categoryId         String
+  description        String
+  amount             Float
+  installmentNumber  Int      @default(1)  // Parcela atual
+  totalInstallments  Int      @default(1)  // Total de parcelas
+  purchaseDate       DateTime
+  createdAt          DateTime @default(now())
+
+  // Relações
+  invoice     CreditCardInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  transaction Transaction       @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  category    Category          @relation(fields: [categoryId], references: [id])
+
+  @@index([invoiceId])
+  @@index([transactionId])
+  @@index([categoryId])
+  @@map("credit_card_items")
+}
+
+// ============================================================================
+// BUDGET (ORÇAMENTO)
+// ============================================================================
+
+model Budget {
+  id             String   @id @default(cuid())
+  userId         String
+  categoryId     String?  // Null = budget total
+  month          Int      // 1-12
+  year           Int
+  plannedAmount  Float
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relações
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  @@unique([userId, categoryId, month, year])
+  @@index([userId])
+  @@index([categoryId])
+  @@index([month, year])
+  @@map("budgets")
+}
+
+// ============================================================================
+// METAS FINANCEIRAS
+// ============================================================================
+
+enum GoalPriority {
+  BAIXA
+  MEDIA
+  ALTA
+}
+
+enum GoalStatus {
+  ATIVA
+  CONCLUIDA
+  CANCELADA
+}
+
+model FinancialGoal {
+  id            String       @id @default(cuid())
+  userId        String
+  name          String
+  description   String?
+  targetAmount  Float
+  currentAmount Float        @default(0)
+  targetDate    DateTime
+  category      String?      // Categoria associada (opcional)
+  priority      GoalPriority @default(MEDIA)
+  status        GoalStatus   @default(ATIVA)
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relações
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([targetDate])
+  @@map("financial_goals")
+}
+
+// ============================================================================
+// PROJETOS ESPECIAIS
+// ============================================================================
+
+enum ProjectStatus {
+  PLANEJAMENTO
+  EM_ANDAMENTO
+  CONCLUIDO
+  CANCELADO
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  budget      Float
+  startDate   DateTime?
+  endDate     DateTime?
+  status      ProjectStatus @default(PLANEJAMENTO)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relações
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses ProjectExpense[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("projects")
+}
+
+model ProjectExpense {
+  id            String   @id @default(cuid())
+  projectId     String
+  transactionId String
+  categoryId    String
+  description   String
+  amount        Float
+  expenseDate   DateTime
+  createdAt     DateTime @default(now())
+
+  // Relações
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  category    Category    @relation(fields: [categoryId], references: [id])
+
+  @@index([projectId])
+  @@index([transactionId])
+  @@index([categoryId])
+  @@map("project_expenses")
+}
+
+// ============================================================================
+// ALERTAS E NOTIFICAÇÕES
+// ============================================================================
+
+enum AlertType {
+  VENCIMENTO
+  BUDGET
+  ANOMALIA
+  META
+  CARTAO
+  LEMBRETE
+  SISTEMA
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model Alert {
+  id        String        @id @default(cuid())
+  userId    String
+  type      AlertType
+  severity  AlertSeverity @default(INFO)
+  title     String
+  message   String
+  relatedId String?       // ID da entidade relacionada (transaction, invoice, etc)
+  isRead    Boolean       @default(false)
+  sentAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  // Relações
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+  @@index([severity])
+  @@index([createdAt])
+  @@map("alerts")
+}
+
+// ============================================================================
+// CONFIGURAÇÕES DO USUÁRIO
+// ============================================================================
+
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+model UserSettings {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  notificationEmail      Boolean  @default(true)
+  notificationDaysBefore Int      @default(7)    // Alertar vencimentos com X dias de antecedência
+  budgetAlertPercentage  Int      @default(80)   // Alertar ao atingir X% do budget
+  theme                  Theme    @default(LIGHT)
+  currency               String   @default("BRL")
+  language               String   @default("pt-BR")
+  weekStartsOn           Int      @default(0)     // 0 = Domingo, 1 = Segunda
+  dateFormat             String   @default("dd/MM/yyyy")
+  timeFormat             String   @default("HH:mm")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  // Relações
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
