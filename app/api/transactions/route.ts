@@ -208,6 +208,7 @@ export async function GET(request: Request) {
               name: true,
               brand: true,
               lastFourDigits: true,
+              closingDay: true,
             },
           },
         },

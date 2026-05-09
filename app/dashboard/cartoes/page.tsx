@@ -57,6 +57,7 @@ interface Transaction {
     name: string;
     brand: string;
     lastFourDigits: string;
+    closingDay: number;
   };
 }
 
@@ -105,20 +106,21 @@ export default function CartoesPage() {
   const fetchCreditCardTransactions = async () => {
     setLoadingTransactions(true);
     try {
-      const response = await fetch('/api/transactions?page=1&limit=200');
+      const response = await fetch('/api/transactions?page=1&limit=500');
       if (response.ok) {
         const data = await response.json();
 
-        // Pegar primeiro e último dia do mês selecionado
-        const firstDay = new Date(selectedYear, selectedMonth - 1, 1);
-        const lastDay = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
-
-        // Filtrar apenas transações de cartão de crédito do mês selecionado
+        // Filtrar transações de cartão de crédito pelo período correto da fatura.
+        // Cada cartão tem seu próprio closingDay, então o período varia por cartão.
+        // Ex: closingDay=3, maio selecionado → período = 4 abr até 3 mai.
         const creditCardTransactions = (data.transactions || []).filter(
           (t: Transaction) => {
             if (!t.creditCard) return false;
+            const { closingDay } = t.creditCard;
+            const periodEnd = new Date(selectedYear, selectedMonth - 1, closingDay, 23, 59, 59);
+            const periodStart = new Date(selectedYear, selectedMonth - 2, closingDay + 1);
             const transactionDate = new Date(t.transactionDate);
-            return transactionDate >= firstDay && transactionDate <= lastDay;
+            return transactionDate >= periodStart && transactionDate <= periodEnd;
           }
         );
         setTransactions(creditCardTransactions);
@@ -320,6 +322,10 @@ export default function CartoesPage() {
           <h2 className="text-xl font-semibold">Transações de Cartão de Crédito</h2>
 
           {/* Seletor de Mês/Ano */}
+          <div className="flex flex-col items-end gap-1">
+            <p className="text-xs text-muted-foreground">
+              Exibe a fatura que <span className="font-medium">fecha em {selectedMonthName}</span> (período varia pelo dia de fechamento de cada cartão)
+            </p>
           <div className="flex gap-2 items-center">
             <Select
               value={selectedMonth.toString()}
@@ -357,6 +363,7 @@ export default function CartoesPage() {
                 <SelectItem value="2027">2027</SelectItem>
               </SelectContent>
             </Select>
+          </div>
           </div>
         </div>
 

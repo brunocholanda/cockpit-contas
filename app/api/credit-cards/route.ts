@@ -49,20 +49,22 @@ export async function GET(request: Request) {
       },
     });
 
-    // Calcular uso de cada cartão baseado nas transações do mês selecionado
+    // Calcular uso de cada cartão baseado no período da fatura (closingDay)
     const cardsWithUsage = await Promise.all(
       creditCards.map(async (card) => {
-        // Calcular primeiro e último dia do mês selecionado
-        const firstDayOfMonth = new Date(selectedYear, selectedMonth - 1, 1);
-        const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0, 23, 59, 59);
+        // Período da fatura: do dia seguinte ao fechamento do mês anterior
+        // até o dia de fechamento do mês selecionado
+        // Ex: closingDay=3, maio → 4 de abril até 3 de maio
+        const periodEnd = new Date(selectedYear, selectedMonth - 1, card.closingDay, 23, 59, 59);
+        const periodStart = new Date(selectedYear, selectedMonth - 2, card.closingDay + 1);
 
-        // Buscar todas as transações de cartão de crédito do mês atual
+        // Buscar todas as transações de cartão de crédito do período da fatura
         const transactions = await prisma.transaction.findMany({
           where: {
             creditCardId: card.id,
             transactionDate: {
-              gte: firstDayOfMonth,
-              lte: lastDayOfMonth,
+              gte: periodStart,
+              lte: periodEnd,
             },
           },
         });
